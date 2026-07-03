@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <title>Дашборд Пускових — Admin</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    :root{--bg:#0f172a;--panel:#0b1220;--text:#e6eef8}
+    body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);}
+    .container{display:flex;height:100vh;gap:0}
+    .sidebar{width:21%;min-width:240px;background:var(--panel);padding:12px;box-sizing:border-box;overflow:auto}
+    .map{flex:1;position:relative}
+    #map{height:100vh;width:100%}
+    table{width:100%;border-collapse:collapse;color:var(--text);font-size:13px}
+    th,td{padding:6px 8px;text-align:left}
+    th{position:sticky;top:0;background:rgba(255,255,255,0.03);backdrop-filter:saturate(0.8)}
+    tr:hover{background:rgba(255,255,255,0.02)}
+    .status{display:inline-block;padding:6px 10px;border-radius:8px;font-weight:700;text-align:center;min-width:64px;cursor:pointer;user-select:none}
+    .status-none{background:#064e3b;color:#a7f3d0}
+    .status-prep{background:#78350f;color:#fde68a}
+    .status-launch{background:#7f1d1d;color:#fecaca}
+    .theme-toggle{position:absolute;top:12px;right:12px;z-index:1000;background:#334155;color:white;border:none;border-radius:50%;padding:8px;cursor:pointer;width:40px;height:40px}
+    #adminBtn{width:100%;padding:10px;margin:6px 0 10px 0;background:#1e40af;color:white;border:0;border-radius:8px;cursor:pointer;font-weight:700;font-size:14px}
+    #adminBtn.logout{background:#b91c1c}
+    #modal{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:99999}
+    #modalBox{background:#0b1220;padding:18px;border-radius:10px;width:300px;box-shadow:0 10px 30px rgba(0,0,0,0.6)}
+    #modalBox h3{margin:0 0 8px 0}
+    #modalBox input{width:100%;padding:8px;margin-top:10px;border-radius:6px;border:0;box-sizing:border-box}
+    #modalBox button{width:100%;padding:10px;margin-top:10px;border-radius:8px;border:0;background:#1e40af;color:white;font-weight:700;cursor:pointer}
+    .popup-btn{margin:3px 4px 3px 0;padding:6px 8px;border-radius:6px;border:0;cursor:pointer;background:#1f2937;color:white}
+    .note{font-size:12px;opacity:0.8}
+    /* info modal */
+    #infoModal{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center;z-index:99999}
+    #infoBox{background:#0b1220;padding:16px;border-radius:10px;width:320px;box-shadow:0 10px 30px rgba(0,0,0,0.6);color:var(--text)}
+    #infoBox h4{margin:0 0 6px 0}
+    #infoBox button{margin-top:12px;padding:8px 10px;border-radius:6px;border:0;background:#1e40af;color:white;cursor:pointer}
+    @media (max-width:720px){
+      .sidebar{width:34%}
+      .status{min-width:48px;padding:4px 6px}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <aside class="sidebar">
+      <button id="adminBtn">Увійти як адмін</button>
+
+      <div class="header-row" style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+        <img src="assets/logo.jpg" style="width:28px;height:28px;border-radius:6px;" alt="">
+        <div>
+          <div style="font-weight:900">Пускові точки</div>
+          <div class="note">Режим редагування доступний лише для адміна</div>
+        </div>
+      </div>
+
+      <table id="launchTable" aria-label="Список пускових точок">
+        <thead>
+          <tr><th>Локація</th><th>Статус</th></tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+    </aside>
+
+    <main class="map">
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">🌓</button>
+      <div id="map" role="region" aria-label="Карта"></div>
+    </main>
+  </div>
+
+  <!-- context menu for status selection -->
+  <div id="statusMenu" style="position:absolute;display:none;background:#0f172a;padding:8px;border:1px solid #334155;border-radius:8px;z-index:9999">
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      <button class="popup-btn" data-status="×1">×1</button>
+      <button class="popup-btn" data-status="×2">×2</button>
+      <button class="popup-btn" data-status="×3">×3</button>
+      <button class="popup-btn" data-status="×4">×4</button>
+      <button class="popup-btn" data-status="×5">×5</button>
+      <button class="popup-btn" data-status="×6">×6</button>
+      <button class="popup-btn" data-status="Підготовка">Підготовка</button>
+      <button class="popup-btn" data-status="Немає">Немає</button>
+    </div>
+  </div>
+
+  <!-- login modal -->
+  <div id="modal">
+    <div id="modalBox">
+      <h3>Вхід як адмін</h3>
+      <input id="pwInput" type="password" placeholder="Пароль">
+      <button id="doLogin">Увійти</button>
+      <button id="cancelLogin" style="margin-top:8px;background:#374151">Скасувати</button>
+    </div>
+  </div>
+
+  <!-- info modal (for non-admins) -->
+  <div id="infoModal">
+    <div id="infoBox">
+      <h4 id="infoName">Назва</h4>
+      <div id="infoStatus">Статус: ...</div>
+      <div id="infoLast">Останній пуск: —</div>
+      <div id="infoRecent">Пуски за останні 4 години: —</div>
+      <button id="closeInfo">Закрити</button>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+  (function(){
+    // --- Config ---
+    const API_BASE = ""; // same origin
+    const LOGIN_ENDPOINT = API_BASE + "/login";
+    const GET_STATUSES = API_BASE + "/status/get";
+    const SET_STATUS = API_BASE + "/status/set";
+
+    const adminKey = "adminToken_v1";
+    let adminToken = localStorage.getItem(adminKey) || null;
+    let isAdmin = !!adminToken;
+
+    const order = ["Немає","×1","×2","×3","×4","×5","×6","Підготовка"];
+
+    // points
+    const points = [
+      {name:'Єйськ',lat:46.680819020277745,lng:38.22734991703035},
+      {name:'Приморсько-Ахтарськ',lat:46.05792111281194,lng:38.24016403804927},
+      {name:'Орел-Південний',lat:52.93678110330605,lng:36.00720292701847},
+      {name:'Шаталово',lat:54.33989156533011,lng:32.474958134622},
+      {name:'Халино',lat:51.751416145824045,lng:36.296137330939324},
+      {name:'Навля',lat:52.82064968394764,lng:34.46009866314555},
+      {name:'Міллерово',lat:48.953780958979465,lng:40.296553507452},
+      {name:'Чауда',lat:45.00394622343219,lng:35.83282945404451},
+      {name:'Гвардійське',lat:45.115379120986255,lng:33.97750843611914},
+      {name:'Донецьк',lat:48.07312564901885,lng:37.72403294548008},
+      {name:'Бердянськ',lat:46.81444387525987,lng:36.75977353111913},
+      {name:'Цимбулова',lat:53.36790841518659,lng:35.79925412699912},
+      {name:'Сеща',lat:53.715344618450665,lng:33.344227317526745},
+      {name:'Приморськ',lat:46.74374562689557,lng:36.32924659407675},
+      {name:'Кача',lat:44.77892410919237,lng:33.571243679459165},
+      {name:'Шахти',lat:47.69907927264756,lng:40.285347870501774},
+      {name:'Асовиця',lat:52.33334248680737,lng:34.50313078671684}
+    ];
+
+    const markers = {};
+    const tableStatuses = {}; // local cache
+
+    // --- Map setup ---
+    const map = L.map('map',{zoomControl:false}).setView([48.5,35.0],6);
+    const light = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'});
+    const dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap, CARTO'});
+    let currentTheme='dark'; dark.addTo(map);
+    document.getElementById('themeToggle').addEventListener('click', ()=> {
+      if(currentTheme==='dark'){ map.removeLayer(dark); light.addTo(map); currentTheme='light'; }
+      else{ map.removeLayer(light); dark.addTo(map); currentTheme='dark'; }
+    });
+
+    function getMarker(color, text){
+      const safeText = text ? String(text) : '';
+      const html = `<div style="background:${color};width:18px;height:18px;border-radius:50%;border:2px solid white;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:white;">${safeText}</div>`;
+      return L.divIcon({className:'custom-marker', html:html, iconSize:[28,28], iconAnchor:[14,14]});
+    }
+
+    function createPopupContent(name){
+      const disabledAttr = isAdmin ? "" : "disabled";
+      return `<b>${name}</b><br>
+        <div style="margin-top:8px">
+          <button class="popup-btn" data-name="${name}" data-status="×1" ${disabledAttr}>×1</button>
+          <button class="popup-btn" data-name="${name}" data-status="×2" ${disabledAttr}>×2</button>
+          <button class="popup-btn" data-name="${name}" data-status="×3" ${disabledAttr}>×3</button>
+          <button class="popup-btn" data-name="${name}" data-status="×4" ${disabledAttr}>×4</button>
+          <button class="popup-btn" data-name="${name}" data-status="×5" ${disabledAttr}>×5</button>
+          <button class="popup-btn" data-name="${name}" data-status="×6" ${disabledAttr}>×6</button>
+          <button class="popup-btn" data-name="${name}" data-status="Підготовка" ${disabledAttr}>Підготовка</button>
+          <button class="popup-btn" data-name="${name}" data-status="Немає" ${disabledAttr}>Немає</button>
+        </div>`;
+    }
+
+    points.forEach(p=>{
+      const m = L.marker([p.lat,p.lng],{icon:getMarker('#22c55e','')}).addTo(map);
+      m.bindPopup(createPopupContent(p.name), {minWidth:200});
+      markers[p.name]=m;
+
+      // marker click behavior: if not admin -> show info modal; if admin -> open popup (editing)
+      m.on('click', ()=>{
+        if(isAdmin){
+          markers[p.name].openPopup();
+        } else {
+          showInfoModal(p.name);
+        }
+      });
+    });
+
+    // center map
+    const group = L.featureGroup(Object.values(markers));
+    if(Object.values(markers).length) map.fitBounds(group.getBounds().pad(0.2));
+
+    // render table rows
+    const tbody = document.querySelector('#launchTable tbody');
+    function renderTableRows(){
+      tbody.innerHTML = "";
+      points.forEach(p=>{
+        const tr = document.createElement('tr');
+        tr.setAttribute('data-name', p.name);
+        const tdName = document.createElement('td');
+        tdName.textContent = p.name;
+        const tdStatus = document.createElement('td');
+        tdStatus.className = 'status status-none';
+        tdStatus.setAttribute('data-value', 'Немає');
+        tdStatus.textContent = 'Немає';
+        tdStatus.addEventListener('click', (e)=>{
+          e.stopPropagation();
+          if(isAdmin){
+            openMenuForCell(e, tdStatus);
+          } else {
+            const name = tr.getAttribute('data-name');
+            showInfoModal(name);
+          }
+        });
+        tr.appendChild(tdName);
+        tr.appendChild(tdStatus);
+        tbody.appendChild(tr);
+      });
+    }
+
+    function openMenuForCell(event, cell){
+      const box = document.getElementById('statusMenu');
+      const name = cell.parentElement.getAttribute('data-name');
+      box.style.display = 'block';
+      const rect = cell.getBoundingClientRect();
+      const top = Math.min(window.innerHeight - 140, rect.top + window.scrollY + 20);
+      const left = Math.min(window.innerWidth - 260, rect.left + 20 + window.scrollX);
+      box.style.top = top + 'px';
+      box.style.left = left + 'px';
+      box.setAttribute('data-name', name);
+    }
+
+    // menu button handlers
+    document.querySelectorAll('#statusMenu .popup-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        const status = btn.getAttribute('data-status');
+        const box = document.getElementById('statusMenu');
+        const name = box.getAttribute('data-name');
+        box.style.display = 'none';
+        if(name && status) updateStatus(name, status);
+      });
+    });
+
+    document.addEventListener('click', (e)=>{
+      const box = document.getElementById('statusMenu');
+      if(box && box.style.display==='block' && !box.contains(e.target)) box.style.display='none';
+    });
+
+    // updateStatus (admin only)
+    async function updateStatus(name, status){
+      if(!isAdmin){ alert('Доступно лише для адміна.'); return; }
+      applyStatusToRowAndMarker(name, status);
+      try {
+        const resp = await fetch(SET_STATUS, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ token: adminToken, name, status })
+        });
+        if(!resp.ok){
+          alert('Помилка збереження на сервері.');
+          await loadStatusesFromServer();
+        } else {
+          const j = await resp.json();
+          if(!j.ok){ alert('Сервер відмовив у зміні.'); logoutAdmin(); await loadStatusesFromServer(); }
+          else {
+            // refresh statuses to get lastLaunch set by server
+            await loadStatusesFromServer();
+          }
+        }
+      } catch(err){
+        console.error('Fetch error', err);
+        alert('Не вдалося звʼязатися з сервером.');
+      }
+    }
+
+    function applyStatusToRowAndMarker(name, status){
+      const row = document.querySelector(`tr[data-name="${name}"]`);
+      if(row){
+        const cell = row.querySelector('.status');
+        if(status === 'Немає'){
+          cell.textContent = 'Немає'; cell.className = 'status status-none'; cell.setAttribute('data-value','Немає');
+        } else if(status === 'Підготовка'){
+          cell.textContent = 'Підготовка'; cell.className = 'status status-prep'; cell.setAttribute('data-value','Підготовка');
+        } else {
+          const num = String(status).replace('×','');
+          cell.textContent = '×' + num; cell.className = 'status status-launch'; cell.setAttribute('data-value','×' + num);
+        }
+      }
+      // marker icon
+      if(markers[name]){
+        if(status === 'Немає') markers[name].setIcon(getMarker('#22c55e',''));
+        else if(status === 'Підготовка') markers[name].setIcon(getMarker('#eab308',''));
+        else {
+          const num = String(status).replace('×','');
+          markers[name].setIcon(getMarker('#ef4444', num));
+        }
+        markers[name].getPopup() && markers[name].getPopup().setContent(createPopupContent(name));
+      }
+    }
+
+    // popup button clicks (delegation)
+    document.addEventListener('click', (e)=>{
+      const btn = e.target.closest('.popup-btn');
+      if(!btn) return;
+      const name = btn.getAttribute('data-name');
+      const status = btn.getAttribute('data-status');
+      if(name && status){
+        if(!isAdmin){ alert('Тільки адмін може змінювати статуси.'); return; }
+        document.querySelectorAll('.leaflet-popup-close-button').forEach(n=>n.click && n.click());
+        updateStatus(name, status);
+      }
+    });
+
+    // --- Admin login/logout UI ---
+    const adminBtn = document.getElementById('adminBtn');
+    const modal = document.getElementById('modal');
+    const doLogin = document.getElementById('doLogin');
+    const cancelLogin = document.getElementById('cancelLogin');
+    const pwInput = document.getElementById('pwInput');
+
+    function setAdminState(token){
+      adminToken = token;
+      isAdmin = !!token;
+      if(isAdmin){
+        localStorage.setItem(adminKey, adminToken);
+        adminBtn.textContent = 'Вийти (адмін)'; adminBtn.classList.add('logout');
+      } else {
+        localStorage.removeItem(adminKey); adminBtn.textContent = 'Увійти як адмін'; adminBtn.classList.remove('logout');
+      }
+      renderTableRows();
+      Object.keys(markers).forEach(name=>{ markers[name].getPopup() && markers[name].getPopup().setContent(createPopupContent(name)); });
+      Object.entries(tableStatuses).forEach(([n,s])=> applyStatusToRowAndMarker(n,s));
+    }
+
+    adminBtn.addEventListener('click', ()=>{
+      if(isAdmin){
+        if(confirm('Вийти з адміна?')) logoutAdmin();
+        return;
+      }
+      modal.style.display = 'flex'; pwInput.value = ''; pwInput.focus();
+    });
+
+    cancelLogin.addEventListener('click', ()=> modal.style.display='none');
+
+    doLogin.addEventListener('click', async ()=>{
+      const pw = pwInput.value;
+      if(!pw) return alert('Введіть пароль');
+      try {
+        const resp = await fetch(LOGIN_ENDPOINT, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ password: pw })
+        });
+        const j = await resp.json();
+        if(j.ok && j.token){ setAdminState(j.token); modal.style.display = 'none'; alert('Успішний вхід як адмін'); await loadStatusesFromServer(); }
+        else alert('Невірний пароль');
+      } catch(err){
+        console.error(err); alert('Не вдалося звʼязатися з сервером.');
+      }
+    });
+
+    function logoutAdmin(){ setAdminState(null); adminToken = null; isAdmin = false; loadStatusesFromServer(); }
+
+    // --- Info modal for non-admins ---
+    const infoModal = document.getElementById('infoModal');
+    const infoName = document.getElementById('infoName');
+    const infoStatus = document.getElementById('infoStatus');
+    const infoLast = document.getElementById('infoLast');
+    const infoRecent = document.getElementById('infoRecent');
+    const closeInfo = document.getElementById('closeInfo');
+    closeInfo.addEventListener('click', ()=> infoModal.style.display='none');
+
+    function formatShort(dtStr){
+      if(!dtStr) return '—';
+      const d = new Date(dtStr);
+      if(isNaN(d)) return '—';
+      const pad = (n)=> String(n).padStart(2,'0');
+      const day = pad(d.getDate()), month = pad(d.getMonth()+1), year = d.getFullYear();
+      const hours = pad(d.getHours()), mins = pad(d.getMinutes());
+      return `${day}.${month}.${year} ${hours}:${mins}`;
+    }
+
+    function showInfoModal(name){
+      const info = tableStatuses[name] || { status:'Немає', lastLaunch:null, recent4h:false };
+      infoName.textContent = name;
+      infoStatus.textContent = 'Статус: ' + (info.status || 'Немає');
+      infoLast.textContent = 'Останній пуск: ' + (info.lastLaunch ? formatShort(info.lastLaunch) : '—');
+      infoRecent.textContent = 'Пуски за останні 4 години: ' + (info.recent4h ? 'Так' : 'Ні');
+      infoModal.style.display = 'flex';
+    }
+
+    // --- Load statuses from server on start ---
+    async function loadStatusesFromServer(){
+      try {
+        const resp = await fetch(GET_STATUSES);
+        if(!resp.ok) throw new Error('status fetch failed');
+        const data = await resp.json();
+        // fill cache
+        Object.keys(data).forEach(name => {
+          tableStatuses[name] = {
+            status: data[name].status || 'Немає',
+            lastLaunch: data[name].lastLaunch || null,
+            recent4h: !!data[name].recent4h
+          };
+        });
+        // ensure all points present
+        points.forEach(p=> { if(!tableStatuses[p.name]) tableStatuses[p.name] = { status:'Немає', lastLaunch:null, recent4h:false }; });
+        renderTableRows();
+        Object.entries(tableStatuses).forEach(([n,s])=> applyStatusToRowAndMarker(n,s.status));
+      } catch(err){
+        console.warn('Could not load statuses from server, using defaults.', err);
+        points.forEach(p => { tableStatuses[p.name] = { status:'Немає', lastLaunch:null, recent4h:false }; });
+        renderTableRows();
+        Object.entries(tableStatuses).forEach(([n,s])=> applyStatusToRowAndMarker(n,s.status));
+      }
+    }
+
+    // verify token from localStorage (we keep it optimistic; server will reject if invalid)
+    if(adminToken){ setAdminState(adminToken); } else { setAdminState(null); }
+
+    // initial load
+    loadStatusesFromServer();
+
+  })();
+  </script>
+</body>
+</html>
