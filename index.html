@@ -17010,14 +17010,22 @@ function drawFullTargets(originLL, rangeKm){
                 (у гектометрах);
          "-"  — формуляр вимкнено, лишається тільки позначка цілі. */
 
+    /* ЗМІНЕНО (за проханням): у самому формулярі (текстовий підпис на
+       карті) індекс належності тепер спрощено лише до двох варіантів —
+       "СВ" для своїх, "ПП" для чужих — замість повної таблиці (ЛО/КЛ/
+       ЗЛ/ПР/УЦ/ЛБ/ПЗ/НО/БП/КР). Береться isFriendColor (та сама "справжня
+       сторона", що й для кольору іконки/формуляра), а НЕ affil.code —
+       affil.code лишається як був і й надалі використовується окремо
+       для вибору іконки (isCruiseMissile), тут це не чіпаємо. */
+    const affilLabel = isFriendColor ? 'СВ' : 'ПП';
     const formMode = window.__patFormMode || '1';
     let formHtml = '';
     if(formMode === '1'){
       formHtml = `${num}`;
     } else if(formMode === '2' || formMode === '3'){
-      formHtml = `${num}<br>${cnt} ${affil.code} (${source}) (${meth})`;
+      formHtml = `${num}<br>${cnt} ${affilLabel} (${source}) (${meth})`;
     } else if(formMode === 'п'){
-      formHtml = `${num}<br>${cnt} ${affil.code} (${source}) (${meth})<br>${spd} ${altHm}`;
+      formHtml = `${num}<br>${cnt} ${affilLabel} (${source}) (${meth})<br>${spd} ${altHm}`;
     } /* formMode === '-' → formHtml лишається порожнім, підпису немає */
 
     if(formHtml){
